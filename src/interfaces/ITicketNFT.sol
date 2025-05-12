@@ -33,6 +33,7 @@ interface ITicketNFT {
     
     function markTransferred(uint256 tokenId) external;
     
-    // Add this function to fix the error
-    function ownerOf(uint256 tokenId) external view returns (address owner);
+    // Add the missing transferFrom functions
+    function transferFrom(address from, address to, uint256 tokenId) external;
+    function safeTransferFrom(address from, address to, uint256 tokenId) external;
 }
