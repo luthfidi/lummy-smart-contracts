@@ -12,14 +12,14 @@ library SecurityLib {
         return ECDSA.recover(ethSignedMessageHash, signature);
     }
     
-    function validateChallenge(bytes32 challenge, uint256 timestamp, uint256 validityWindow) internal view returns (bool) {
-        // Validasi timestamp - pastikan tidak terlalu lama atau di masa depan
+    function validateChallenge(uint256 timestamp, uint256 validityWindow) internal view returns (bool) {
+        // Validation logic without using challenge
         if (timestamp > block.timestamp) {
-            return false; // Timestamp di masa depan
+            return false; // Timestamp in the future
         }
         
         if (block.timestamp - timestamp > validityWindow) {
-            return false; // Challenge sudah kedaluwarsa
+            return false; // Challenge is expired
         }
         
         return true;

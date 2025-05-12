@@ -49,7 +49,8 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         _;
     }
     
-    constructor() Ownable(msg.sender) {
+    constructor() {
+    _transferOwnership(msg.sender);
         factory = msg.sender;
     }
     

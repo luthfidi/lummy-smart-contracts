@@ -28,8 +28,8 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         _;
     }
     
-    constructor() ERC721("Ticket", "TIX") Ownable(msg.sender) {
-        // Generate random secret salt
+    constructor() ERC721("Ticket", "TIX") {
+    _transferOwnership(msg.sender); // Initialize ownership in 4.8.2
         _secretSalt = keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender));
     }
     
@@ -38,15 +38,19 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         string memory _symbol,
         address _eventContract
     ) external override onlyOwner {
-        // Set nama kontrak NFT (Ticket - Event Name)
+        // Store the values in state variables even if we can't use them to rename the token
+        // This silences the linter warnings
         string memory fullName = string(abi.encodePacked("Ticket - ", _eventName));
-        // Tidak bisa langsung mengubah nama ERC721, tetapi bisa disimpan di variabel state jika diperlukan
+        emit InitializeLog(_eventName, _symbol, fullName); // Add a custom event
         
         eventContract = _eventContract;
         
-        // Transfer kepemilikan ke event contract
+        // Transfer ownership to event contract
         _transferOwnership(_eventContract);
     }
+
+    // Add this event to your contract
+    event InitializeLog(string eventName, string symbol, string fullName);
     
     function mintTicket(
         address to,
@@ -121,7 +125,7 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         require(ownerOf(tokenId) == owner, "Invalid owner");
         
         // Validasi timestamp
-        require(SecurityLib.validateChallenge(bytes32(0), timestamp, Constants.VALIDITY_WINDOW * 2), "Invalid timestamp");
+        require(SecurityLib.validateChallenge(timestamp, Constants.VALIDITY_WINDOW * 2), "Invalid timestamp");
         
         // Buat challenge seperti di generateQRChallenge
         uint256 timeBlock = timestamp / Constants.VALIDITY_WINDOW;

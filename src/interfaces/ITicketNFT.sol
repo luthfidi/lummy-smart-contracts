@@ -32,4 +32,7 @@ interface ITicketNFT {
     function getTicketMetadata(uint256 tokenId) external view returns (Structs.TicketMetadata memory);
     
     function markTransferred(uint256 tokenId) external;
+    
+    // Add this function to fix the error
+    function ownerOf(uint256 tokenId) external view returns (address owner);
 }
