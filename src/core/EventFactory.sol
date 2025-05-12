@@ -17,10 +17,11 @@ contract EventFactory is IEventFactory, Ownable {
     address public platformFeeReceiver;
     
     // Constructor
-    constructor(address _idrxToken) Ownable(msg.sender) {
+    constructor(address _idrxToken) {
         require(_idrxToken != address(0), "Invalid IDRX token address");
         idrxToken = _idrxToken;
         platformFeeReceiver = msg.sender; // Default is deployer
+        _transferOwnership(msg.sender); // Set the owner manually
     }
     
     // Create a new event

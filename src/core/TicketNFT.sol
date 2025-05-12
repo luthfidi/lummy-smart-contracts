@@ -170,6 +170,11 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         return "https://example.com/api/ticket/metadata";
     }
     
+    // We need to explicitly override these functions to satisfy both IERC721 and ITicketNFT interfaces
+    function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721Enumerable, IERC165) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+    
     // Events
     event TicketMinted(uint256 indexed tokenId, address indexed to, uint256 tierId);
     event TicketTransferred(uint256 indexed tokenId, address indexed from, address indexed to);

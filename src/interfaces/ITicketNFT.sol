@@ -2,8 +2,10 @@
 pragma solidity 0.8.30;
 
 import "src/libraries/Structs.sol";
+import "lib/openzeppelin-contracts/contracts/token/ERC721/IERC721.sol";
 
-interface ITicketNFT {
+// Updated interface to extend IERC721 instead of duplicating methods
+interface ITicketNFT is IERC721 {
     function initialize(
         string memory _eventName,
         string memory _symbol,
@@ -33,7 +35,9 @@ interface ITicketNFT {
     
     function markTransferred(uint256 tokenId) external;
     
-    // Add the missing transferFrom functions
-    function transferFrom(address from, address to, uint256 tokenId) external;
-    function safeTransferFrom(address from, address to, uint256 tokenId) external;
+    // We don't need to redeclare these methods from IERC721:
+    // - transferFrom(address from, address to, uint256 tokenId)
+    // - safeTransferFrom(address from, address to, uint256 tokenId)
+    // - ownerOf(uint256 tokenId)
+    // Since we're inheriting from IERC721
 }
