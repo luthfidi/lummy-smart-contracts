@@ -2,9 +2,10 @@
 pragma solidity 0.8.30;
 
 import "lib/openzeppelin-contracts/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
-import "lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import "lib/openzeppelin-contracts/contracts/security/ReentrancyGuard.sol";
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/utils/structs/EnumerableSet.sol";
+import "lib/openzeppelin-contracts/contracts/utils/Counters.sol";
 import "src/libraries/Structs.sol";
 import "src/libraries/Constants.sol";
 import "src/libraries/SecurityLib.sol";

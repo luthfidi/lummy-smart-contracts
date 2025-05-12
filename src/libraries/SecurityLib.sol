@@ -2,11 +2,13 @@
 pragma solidity 0.8.30;
 
 import "lib/openzeppelin-contracts/contracts/utils/cryptography/ECDSA.sol";
-import "lib/openzeppelin-contracts/contracts/utils/cryptography/MessageHashUtils.sol";
 
 library SecurityLib {
     function recoverSigner(bytes32 messageHash, bytes memory signature) internal pure returns (address) {
-        bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
+        // Implementasi manual dari toEthSignedMessageHash
+        bytes32 ethSignedMessageHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash)
+        );
         return ECDSA.recover(ethSignedMessageHash, signature);
     }
     
