@@ -94,29 +94,37 @@ contract MockIDRX {
 contract EventFactoryTest is Test {
     EventFactory public factory;
     MockIDRX public idrx;
+    address public deployer; // Owner yang men-deploy kontrak
     address public organizer;
     address public buyer;
 
     function setUp() public {
+        // Setup addresses
+        deployer = address(this); // Test contract menjadi deployer
+        organizer = makeAddr("organizer"); // Gunakan fungsi makeAddr dari Forge Test
+        buyer = makeAddr("buyer");
+        
         // Create mock IDRX token
         idrx = new MockIDRX("IDRX Token", "IDRX");
         
-        // Deploy EventFactory
+        // Deploy EventFactory dengan prank agar deployer menjadi owner
         factory = new EventFactory(address(idrx));
         
-        // Setup addresses
-        organizer = address(0x1);
-        buyer = address(0x2);
+        // Mint tokens untuk testing
+        idrx.mint(buyer, 10000 * 10**2); // 10,000 IDRX dengan 2 desimal
         
-        // Mint tokens to buyer for testing
-        idrx.mint(buyer, 10000 * 10**2); // 10,000 IDRX with 2 decimals
-        
-        // Label addresses for better test output
-        vm.label(organizer, "Organizer");
-        vm.label(buyer, "Buyer");
+        // Debug - lihat owner aktual dari factory
+        console.log("Factory owner:", factory.owner());
+        console.log("Test contract address (deployer):", deployer);
     }
 
     function testCreateEvent() public {
+        console.log("Starting testCreateEvent");
+        console.log("Current owner:", factory.owner());
+        
+        // Set platform fee receiver
+        factory.setPlatformFeeReceiver(deployer);
+        
         // Prank as organizer
         vm.startPrank(organizer);
         
@@ -148,6 +156,12 @@ contract EventFactoryTest is Test {
     }
 
     function testCreateEventAndAddTier() public {
+        console.log("Starting testCreateEventAndAddTier");
+        console.log("Current owner:", factory.owner());
+        
+        // Set platform fee receiver
+        factory.setPlatformFeeReceiver(deployer);
+        
         // Prank as organizer
         vm.startPrank(organizer);
         
@@ -185,21 +199,42 @@ contract EventFactoryTest is Test {
     }
 
     function testBuyTicket() public {
-        // First create an event and add tier
-        testCreateEventAndAddTier();
+        console.log("Starting testBuyTicket");
+        console.log("Current owner:", factory.owner());
         
-        // Get the event address
-        address[] memory events = factory.getEvents();
-        address eventAddress = events[0];
+        // Set platform fee receiver
+        factory.setPlatformFeeReceiver(deployer);
         
-        // Prank as buyer
+        // Step 1: Create event as organizer
+        vm.startPrank(organizer);
+        
+        uint256 eventDate = block.timestamp + 30 days;
+        address eventAddress = factory.createEvent(
+            "Test Event",
+            "Test Description",
+            eventDate,
+            "Test Venue",
+            "ipfs://test"
+        );
+        
+        // Add ticket tier
+        IEvent event_ = IEvent(eventAddress);
+        event_.addTicketTier(
+            "General Admission",
+            100 * 10**2, // 100 IDRX
+            100, // 100 tickets
+            4 // max 4 tickets per purchase
+        );
+        
+        vm.stopPrank();
+        
+        // Step 2: Buy ticket as buyer
         vm.startPrank(buyer);
         
         // Approve IDRX spending
         idrx.approve(eventAddress, 1000 * 10**2);
         
         // Buy ticket
-        IEvent event_ = IEvent(eventAddress);
         event_.purchaseTicket(0, 2); // Buy 2 tickets of tier 0
         
         vm.stopPrank();
