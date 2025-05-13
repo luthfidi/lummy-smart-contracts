@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.29;
 
 import "lib/openzeppelin-contracts/contracts/access/Ownable.sol";
 import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
@@ -10,6 +10,10 @@ import "src/interfaces/IEvent.sol";
 import "src/core/Event.sol";
 import "src/core/TicketNFT.sol";
 
+// Custom errors untuk mengurangi ukuran bytecode
+error InvalidAddress();
+error EventDateMustBeInFuture();
+
 contract EventFactory is IEventFactory, Ownable {
     // State variables
     address[] public events;
@@ -18,50 +22,35 @@ contract EventFactory is IEventFactory, Ownable {
     
     // Constructor
     constructor(address _idrxToken) {
-        require(_idrxToken != address(0), "Invalid IDRX token address");
+        if(_idrxToken == address(0)) revert InvalidAddress();
         idrxToken = _idrxToken;
-        platformFeeReceiver = msg.sender; // Default is deployer
-        _transferOwnership(msg.sender); // Set the owner manually
+        platformFeeReceiver = msg.sender;
+        _transferOwnership(msg.sender);
     }
     
-    // Create a new event
+    // Create a new event - TANPA modifier onlyOwner
     function createEvent(
-        string memory _name,
-        string memory _description,
+        string calldata _name,
+        string calldata _description,
         uint256 _date,
-        string memory _venue,
-        string memory _ipfsMetadata
+        string calldata _venue,
+        string calldata _ipfsMetadata
     ) external override returns (address) {
-        require(_date > block.timestamp, "Event date must be in the future");
+        if(_date <= block.timestamp) revert EventDateMustBeInFuture();
         
-        // Deploy new Event contract
+        // Deploy new contracts
         Event newEvent = new Event();
+        newEvent.initialize(msg.sender, _name, _description, _date, _venue, _ipfsMetadata);
         
-        // Initialize event
-        newEvent.initialize(
-            msg.sender,
-            _name,
-            _description,
-            _date,
-            _venue,
-            _ipfsMetadata
-        );
-        
-        // Deploy new TicketNFT contract
         TicketNFT newTicketNFT = new TicketNFT();
+        newTicketNFT.initialize(_name, "TIX", address(newEvent));
         
-        // Initialize TicketNFT
-        string memory symbol = "TIX";
-        newTicketNFT.initialize(_name, symbol, address(newEvent));
-        
-        // Set TicketNFT pada Event
         newEvent.setTicketNFT(address(newTicketNFT), idrxToken, platformFeeReceiver);
         
         // Add to events list
         events.push(address(newEvent));
         
-        // Emit event
-        emit EventCreated(events.length - 1, address(newEvent), _name);
+        emit EventCreated(events.length - 1, address(newEvent));
         
         return address(newEvent);
     }
@@ -85,9 +74,9 @@ contract EventFactory is IEventFactory, Ownable {
         });
     }
     
-    // Set platform fee receiver
+    // Set platform fee receiver - tetap menggunakan onlyOwner
     function setPlatformFeeReceiver(address receiver) external override onlyOwner {
-        require(receiver != address(0), "Invalid fee receiver address");
+        if(receiver == address(0)) revert InvalidAddress();
         platformFeeReceiver = receiver;
         
         emit PlatformFeeReceiverUpdated(receiver);
@@ -98,16 +87,16 @@ contract EventFactory is IEventFactory, Ownable {
         return Constants.PLATFORM_FEE_PERCENTAGE;
     }
     
-    // Update IDRX token address (in case token is upgraded)
+    // Update IDRX token address - tetap menggunakan onlyOwner
     function updateIDRXToken(address _newToken) external onlyOwner {
-        require(_newToken != address(0), "Invalid token address");
+        if(_newToken == address(0)) revert InvalidAddress();
         idrxToken = _newToken;
         
         emit IDRXTokenUpdated(_newToken);
     }
     
     // Events
-    event EventCreated(uint256 indexed eventId, address indexed eventContract, string name);
+    event EventCreated(uint256 indexed eventId, address indexed eventContract);
     event PlatformFeeReceiverUpdated(address indexed receiver);
     event IDRXTokenUpdated(address indexed newToken);
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity 0.8.29;
 
 library Constants {
     // Basis point untuk perhitungan persentase (100% = 10000 basis poin)
