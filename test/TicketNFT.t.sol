@@ -24,7 +24,12 @@ contract TicketNFTTest is Test {
     uint256 public eventDate;
     
     // Private key untuk testing signature
-    uint256 private attendee1PrivateKey;
+    uint256 private _attendee1PrivateKey;
+    
+    // Custom error signatures for matching in tests
+    bytes4 private constant _TICKET_ALREADY_USED_ERROR_SELECTOR = bytes4(keccak256("TicketAlreadyUsed()"));
+    bytes4 private constant _ONLY_EVENT_CONTRACT_CAN_CALL_ERROR_SELECTOR = bytes4(keccak256("OnlyEventContractCanCall()"));
+    bytes4 private constant _INVALID_TIMESTAMP_ERROR_SELECTOR = bytes4(keccak256("InvalidTimestamp()"));
     
     function setUp() public {
         console.log("Setting up TicketNFT test environment");
@@ -34,8 +39,8 @@ contract TicketNFTTest is Test {
         organizer = makeAddr("organizer");
         
         // Generate private key untuk attendee1 (untuk testing signature)
-        attendee1PrivateKey = 0xA11CE; // Private key tetap (untuk konsistensi debugging)
-        attendee1 = vm.addr(attendee1PrivateKey);
+        _attendee1PrivateKey = 0xA11CE; // Private key tetap (untuk konsistensi debugging)
+        attendee1 = vm.addr(_attendee1PrivateKey);
         console.log("Attendee1 address:", attendee1);
         
         attendee2 = makeAddr("attendee2");
@@ -179,7 +184,7 @@ contract TicketNFTTest is Test {
         console.log("Message hash:", vm.toString(messageHash));
         
         // Attendee1 signs challenge dengan private key
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attendee1PrivateKey, messageHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(_attendee1PrivateKey, messageHash);
         bytes memory signature = abi.encodePacked(r, s, v);
         
         console.log("Signature length:", signature.length);
@@ -231,14 +236,14 @@ contract TicketNFTTest is Test {
         );
         
         // Attendee1 signs challenge
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(attendee1PrivateKey, messageHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(_attendee1PrivateKey, messageHash);
         bytes memory signature = abi.encodePacked(r, s, v);
         
         // Warp ke waktu yang jauh melewati validity window
         vm.warp(block.timestamp + Constants.VALIDITY_WINDOW * 3);
         
         // Ekspektasi revert
-        vm.expectRevert("Invalid timestamp");
+        vm.expectRevert(_INVALID_TIMESTAMP_ERROR_SELECTOR);
         ticketNFT.verifyTicket(
             tokenId,
             attendee1,
@@ -256,7 +261,7 @@ contract TicketNFTTest is Test {
         vm.startPrank(attendee1);
         
         // Ekspektasi revert
-        vm.expectRevert("Only event contract can call this");
+        vm.expectRevert(_ONLY_EVENT_CONTRACT_CAN_CALL_ERROR_SELECTOR);
         ticketNFT.useTicket(tokenId);
         vm.stopPrank();
     }
@@ -275,7 +280,7 @@ contract TicketNFTTest is Test {
         vm.startPrank(attendee1);
         
         // Ekspektasi revert
-        vm.expectRevert("Ticket already used");
+        vm.expectRevert(_TICKET_ALREADY_USED_ERROR_SELECTOR);
         ticketNFT.transferTicket(attendee2, tokenId);
         vm.stopPrank();
     }

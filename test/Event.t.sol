@@ -96,7 +96,6 @@ contract MockIDRX {
 }
 
 contract EventTest is Test {
-    EventFactory public factory;
     Event public eventContract;
     ITicketNFT public ticketNFT;
     MockIDRX public idrx;
@@ -114,6 +113,11 @@ contract EventTest is Test {
     string public eventVenue = "Jakarta Convention Center";
     string public eventIpfsMetadata = "ipfs://QmTestMetadata";
     
+    // Custom error signatures for matching in tests
+    bytes4 private constant _ONLY_ORGANIZER_CAN_CALL_ERROR_SELECTOR = bytes4(keccak256("OnlyOrganizerCanCall()"));
+    bytes4 private constant _INVALID_MAX_PER_PURCHASE_ERROR_SELECTOR = bytes4(keccak256("InvalidMaxPerPurchase()"));
+    bytes4 private constant _PRICE_EXCEEDS_MAX_ALLOWED_ERROR_SELECTOR = bytes4(keccak256("PriceExceedsMaxAllowed()"));
+    
     function setUp() public {
         console.log("Setting up Event test environment");
         
@@ -128,10 +132,6 @@ contract EventTest is Test {
         vm.startPrank(deployer);
         
         idrx = new MockIDRX("IDRX Token", "IDRX");
-        
-        factory = new EventFactory(address(idrx));
-        
-        factory.setPlatformFeeReceiver(deployer);
         
         vm.stopPrank();
         
@@ -420,6 +420,7 @@ contract EventTest is Test {
         vm.startPrank(buyer1);
         idrx.approve(eventAddress, 500 * 10**2);
         
+        // Gunakan string error message yang sesuai dengan error sebenarnya
         vm.expectRevert("Quantity exceeds max per purchase");
         eventContract.purchaseTicket(0, 5); // Seharusnya gagal
         vm.stopPrank();
@@ -437,7 +438,7 @@ contract EventTest is Test {
         
         vm.startPrank(buyer1);
         
-        vm.expectRevert("Only organizer can call this");
+        vm.expectRevert(_ONLY_ORGANIZER_CAN_CALL_ERROR_SELECTOR);
         eventContract.updateTicketTier(
             0,
             "Updated Name",
@@ -466,6 +467,7 @@ contract EventTest is Test {
         vm.startPrank(reseller);
         ticketNFT.approve(eventAddress, tokenId);
         
+        // Gunakan string error message yang sesuai dengan error sebenarnya
         vm.expectRevert("Resale price exceeds maximum allowed markup");
         eventContract.listTicketForResale(tokenId, tooHighResalePrice); // Seharusnya gagal
         vm.stopPrank();

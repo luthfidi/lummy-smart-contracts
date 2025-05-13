@@ -6,11 +6,10 @@ import "lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "src/libraries/Structs.sol";
 import "src/libraries/Constants.sol";
 import "src/interfaces/IEventFactory.sol";
-import "src/interfaces/IEvent.sol";
-import "src/core/Event.sol";
-import "src/core/TicketNFT.sol";
+import "src/core/Event.sol"; // Changed from IEvent to Event for actual implementation
+import "src/core/EventDeployer.sol";
 
-// Custom errors untuk mengurangi ukuran bytecode
+// Custom errors to reduce bytecode size
 error InvalidAddress();
 error EventDateMustBeInFuture();
 
@@ -19,16 +18,17 @@ contract EventFactory is IEventFactory, Ownable {
     address[] public events;
     address public idrxToken;
     address public platformFeeReceiver;
+    EventDeployer public deployer;
     
     // Constructor
     constructor(address _idrxToken) {
         if(_idrxToken == address(0)) revert InvalidAddress();
         idrxToken = _idrxToken;
         platformFeeReceiver = msg.sender;
-        _transferOwnership(msg.sender);
+        deployer = new EventDeployer();
     }
     
-    // Create a new event - TANPA modifier onlyOwner
+    // Create a new event - anyone can call this
     function createEvent(
         string calldata _name,
         string calldata _description,
@@ -38,21 +38,24 @@ contract EventFactory is IEventFactory, Ownable {
     ) external override returns (address) {
         if(_date <= block.timestamp) revert EventDateMustBeInFuture();
         
-        // Deploy new contracts
-        Event newEvent = new Event();
-        newEvent.initialize(msg.sender, _name, _description, _date, _venue, _ipfsMetadata);
-        
-        TicketNFT newTicketNFT = new TicketNFT();
-        newTicketNFT.initialize(_name, "TIX", address(newEvent));
-        
-        newEvent.setTicketNFT(address(newTicketNFT), idrxToken, platformFeeReceiver);
+        // Use the deployer contract to create event and ticket
+        (address eventAddress,) = deployer.deployEventAndTicket(
+            msg.sender,
+            _name,
+            _description,
+            _date,
+            _venue,
+            _ipfsMetadata,
+            idrxToken,
+            platformFeeReceiver
+        );
         
         // Add to events list
-        events.push(address(newEvent));
+        events.push(eventAddress);
         
-        emit EventCreated(events.length - 1, address(newEvent));
+        emit EventCreated(events.length - 1, eventAddress);
         
-        return address(newEvent);
+        return eventAddress;
     }
     
     // Get all events
@@ -62,7 +65,7 @@ contract EventFactory is IEventFactory, Ownable {
     
     // Get event details
     function getEventDetails(address eventAddress) external view override returns (Structs.EventDetails memory) {
-        Event eventContract = Event(eventAddress);
+        Event eventContract = Event(eventAddress); // Using direct cast to Event
         
         return Structs.EventDetails({
             name: eventContract.name(),
@@ -74,7 +77,7 @@ contract EventFactory is IEventFactory, Ownable {
         });
     }
     
-    // Set platform fee receiver - tetap menggunakan onlyOwner
+    // Set platform fee receiver
     function setPlatformFeeReceiver(address receiver) external override onlyOwner {
         if(receiver == address(0)) revert InvalidAddress();
         platformFeeReceiver = receiver;
@@ -87,7 +90,7 @@ contract EventFactory is IEventFactory, Ownable {
         return Constants.PLATFORM_FEE_PERCENTAGE;
     }
     
-    // Update IDRX token address - tetap menggunakan onlyOwner
+    // Update IDRX token address
     function updateIDRXToken(address _newToken) external onlyOwner {
         if(_newToken == address(0)) revert InvalidAddress();
         idrxToken = _newToken;

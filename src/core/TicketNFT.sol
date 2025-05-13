@@ -11,6 +11,15 @@ import "src/libraries/Constants.sol";
 import "src/libraries/SecurityLib.sol";
 import "src/interfaces/ITicketNFT.sol";
 
+// Custom errors
+error AlreadyInitialized();
+error OnlyEventContractCanCall();
+error NotApprovedOrOwner();
+error TicketAlreadyUsed();
+error TicketDoesNotExist();
+error InvalidOwner();
+error InvalidTimestamp();
+
 contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
     using Counters for Counters.Counter;
     
@@ -24,12 +33,11 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
     bytes32 private immutable _secretSalt;
     
     modifier onlyEventContract() {
-        require(msg.sender == eventContract, "Only event contract can call this");
+        if(msg.sender != eventContract) revert OnlyEventContractCanCall();
         _;
     }
     
     constructor() ERC721("Ticket", "TIX") {
-    _transferOwnership(msg.sender); // Initialize ownership in 4.8.2
         _secretSalt = keccak256(abi.encodePacked(block.timestamp, block.prevrandao, msg.sender));
     }
     
@@ -37,11 +45,12 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         string memory _eventName,
         string memory _symbol,
         address _eventContract
-    ) external override onlyOwner {
+    ) external override {
+        if(eventContract != address(0)) revert AlreadyInitialized();
+        
         // Store the values in state variables even if we can't use them to rename the token
-        // This silences the linter warnings
         string memory fullName = string(abi.encodePacked("Ticket - ", _eventName));
-        emit InitializeLog(_eventName, _symbol, fullName); // Add a custom event
+        emit InitializeLog(_eventName, _symbol, fullName);
         
         eventContract = _eventContract;
         
@@ -49,7 +58,6 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         _transferOwnership(_eventContract);
     }
 
-    // Add this event to your contract
     event InitializeLog(string eventName, string symbol, string fullName);
     
     function mintTicket(
@@ -75,15 +83,15 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         // Inisialisasi transfer count
         transferCount[tokenId] = 0;
         
-        // Emit event (tambahkan di interface jika diperlukan)
+        // Emit event
         emit TicketMinted(tokenId, to, tierId);
         
         return tokenId;
     }
     
     function transferTicket(address to, uint256 tokenId) external override nonReentrant {
-        require(_isApprovedOrOwner(msg.sender, tokenId), "Not approved or owner");
-        require(!ticketMetadata[tokenId].used, "Ticket already used");
+        if(!_isApprovedOrOwner(msg.sender, tokenId)) revert NotApprovedOrOwner();
+        if(ticketMetadata[tokenId].used) revert TicketAlreadyUsed();
         
         // Increment transfer count
         transferCount[tokenId]++;
@@ -96,8 +104,8 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
     }
     
     function generateQRChallenge(uint256 tokenId) external view override returns (bytes32) {
-        require(_exists(tokenId), "Ticket does not exist");
-        require(!ticketMetadata[tokenId].used, "Ticket already used");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
+        if(ticketMetadata[tokenId].used) revert TicketAlreadyUsed();
         
         address owner = ownerOf(tokenId);
         
@@ -120,12 +128,12 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
         uint256 timestamp,
         bytes memory signature
     ) external view override returns (bool) {
-        require(_exists(tokenId), "Ticket does not exist");
-        require(!ticketMetadata[tokenId].used, "Ticket already used");
-        require(ownerOf(tokenId) == owner, "Invalid owner");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
+        if(ticketMetadata[tokenId].used) revert TicketAlreadyUsed();
+        if(ownerOf(tokenId) != owner) revert InvalidOwner();
         
         // Validasi timestamp
-        require(SecurityLib.validateChallenge(timestamp, Constants.VALIDITY_WINDOW * 2), "Invalid timestamp");
+        if(!SecurityLib.validateChallenge(timestamp, Constants.VALIDITY_WINDOW * 2)) revert InvalidTimestamp();
         
         // Buat challenge seperti di generateQRChallenge
         uint256 timeBlock = timestamp / Constants.VALIDITY_WINDOW;
@@ -142,8 +150,8 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
     }
     
     function useTicket(uint256 tokenId) external override onlyEventContract {
-        require(_exists(tokenId), "Ticket does not exist");
-        require(!ticketMetadata[tokenId].used, "Ticket already used");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
+        if(ticketMetadata[tokenId].used) revert TicketAlreadyUsed();
         
         // Mark ticket as used
         ticketMetadata[tokenId].used = true;
@@ -153,17 +161,17 @@ contract TicketNFT is ITicketNFT, ERC721Enumerable, ReentrancyGuard, Ownable {
     }
     
     function getTicketMetadata(uint256 tokenId) external view override returns (Structs.TicketMetadata memory) {
-        require(_exists(tokenId), "Ticket does not exist");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
         return ticketMetadata[tokenId];
     }
     
     function markTransferred(uint256 tokenId) external override onlyEventContract {
-        require(_exists(tokenId), "Ticket does not exist");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
         transferCount[tokenId]++;
     }
     
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(_exists(tokenId), "URI query for nonexistent token");
+        if(!_exists(tokenId)) revert TicketDoesNotExist();
         
         // Dalam implementasi sebenarnya, bisa dikembangkan untuk mengembalikan URI yang sesuai
         // misalnya metadata dari IPFS berdasarkan tokenId dan metadata event

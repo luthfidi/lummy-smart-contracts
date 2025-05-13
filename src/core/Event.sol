@@ -11,6 +11,34 @@ import "src/interfaces/IEvent.sol";
 import "src/interfaces/ITicketNFT.sol";
 import "src/core/TicketNFT.sol";
 
+// Custom errors
+error OnlyFactoryCanCall();
+error OnlyOrganizerCanCall();
+error EventIsCancelled();
+error TicketNFTAlreadySet();
+error PriceNotPositive();
+error AvailableTicketsNotPositive();
+error InvalidMaxPerPurchase();
+error TierDoesNotExist();
+error AvailableLessThanSold();
+error InvalidPurchaseRequest();
+error TokenTransferFailed();
+error PlatformFeeTransferFailed();
+error OrganizerPaymentFailed();
+error MaxMarkupExceeded();
+error OrganizerFeeExceeded();
+error ResaleNotAllowed();
+error NotTicketOwner();
+error TicketUsed();
+error PriceExceedsMaxAllowed();
+error TooCloseToEventDate();
+error TicketNotListedForResale();
+error PaymentFailed();
+error OrganizerFeeTransferFailed();
+error SellerPaymentFailed();
+error NotSeller();
+error EventAlreadyCancelled();
+
 contract Event is IEvent, ReentrancyGuard, Ownable {
     // Event details
     string public name;
@@ -39,18 +67,17 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     
     // Modifier to restrict access to organizer
     modifier onlyOrganizer() {
-        require(msg.sender == organizer, "Only organizer can call this");
+        if(msg.sender != organizer) revert OnlyOrganizerCanCall();
         _;
     }
     
     // Modifier to ensure event is not cancelled
     modifier eventActive() {
-        require(!cancelled, "Event has been cancelled");
+        if(cancelled) revert EventIsCancelled();
         _;
     }
     
     constructor() {
-    _transferOwnership(msg.sender);
         factory = msg.sender;
     }
     
@@ -62,7 +89,9 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         uint256 _date,
         string memory _venue,
         string memory _ipfsMetadata
-    ) external override onlyOwner {
+    ) external override {
+        if(msg.sender != factory) revert OnlyFactoryCanCall();
+        
         organizer = _organizer;
         name = _name;
         description = _description;
@@ -79,17 +108,19 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
             minDaysBeforeEvent: 1,
             requireVerification: false
         });
-        
-        // Transfer ownership to organizer
-        _transferOwnership(_organizer);
     }
     
     // Initialize ticket NFT contract
-    function setTicketNFT(address _ticketNFT, address _idrxToken, address _platformFeeReceiver) external onlyOwner {
-        require(address(ticketNFT) == address(0), "TicketNFT already set");
+    function setTicketNFT(address _ticketNFT, address _idrxToken, address _platformFeeReceiver) external {
+        if(msg.sender != factory) revert OnlyFactoryCanCall();
+        if(address(ticketNFT) != address(0)) revert TicketNFTAlreadySet();
+        
         ticketNFT = ITicketNFT(_ticketNFT);
         idrxToken = IERC20(_idrxToken);
         platformFeeReceiver = _platformFeeReceiver;
+        
+        // Transfer ownership to organizer after setup is complete
+        _transferOwnership(organizer);
     }
     
     // Create new ticket tier
@@ -99,9 +130,9 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         uint256 _available,
         uint256 _maxPerPurchase
     ) external override onlyOrganizer eventActive {
-        require(_price > 0, "Price must be greater than zero");
-        require(_available > 0, "Available tickets must be greater than zero");
-        require(_maxPerPurchase > 0 && _maxPerPurchase <= _available, "Invalid max per purchase");
+        if(_price <= 0) revert PriceNotPositive();
+        if(_available <= 0) revert AvailableTicketsNotPositive();
+        if(_maxPerPurchase <= 0 || _maxPerPurchase > _available) revert InvalidMaxPerPurchase();
         
         uint256 tierId = tierCount;
         ticketTiers[tierId] = Structs.TicketTier({
@@ -126,12 +157,12 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         uint256 _available,
         uint256 _maxPerPurchase
     ) external override onlyOrganizer eventActive {
-        require(_tierId < tierCount, "Tier does not exist");
+        if(_tierId >= tierCount) revert TierDoesNotExist();
         Structs.TicketTier storage tier = ticketTiers[_tierId];
         
-        require(_price > 0, "Price must be greater than zero");
-        require(_available >= tier.sold, "Available cannot be less than sold");
-        require(_maxPerPurchase > 0 && _maxPerPurchase <= _available, "Invalid max per purchase");
+        if(_price <= 0) revert PriceNotPositive();
+        if(_available < tier.sold) revert AvailableLessThanSold();
+        if(_maxPerPurchase <= 0 || _maxPerPurchase > _available) revert InvalidMaxPerPurchase();
         
         tier.name = _name;
         tier.price = _price;
@@ -143,27 +174,27 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     
     // Purchase ticket(s)
     function purchaseTicket(uint256 _tierId, uint256 _quantity) external override nonReentrant eventActive {
-        require(_tierId < tierCount, "Tier does not exist");
+        if(_tierId >= tierCount) revert TierDoesNotExist();
         Structs.TicketTier storage tier = ticketTiers[_tierId];
         
         // Validasi pembelian
-        require(TicketLib.validateTicketPurchase(tier, _quantity), "Invalid purchase request");
+        if(!TicketLib.validateTicketPurchase(tier, _quantity)) revert InvalidPurchaseRequest();
         
         // Calculate total price
         uint256 totalPrice = tier.price * _quantity;
         
         // Transfer IDRX token dari pembeli ke kontrak event
-        require(idrxToken.transferFrom(msg.sender, address(this), totalPrice), "Token transfer failed");
+        if(!idrxToken.transferFrom(msg.sender, address(this), totalPrice)) revert TokenTransferFailed();
         
         // Calculate platform fee
         uint256 platformFee = (totalPrice * Constants.PLATFORM_FEE_PERCENTAGE) / Constants.BASIS_POINTS;
         
         // Transfer platform fee
-        require(idrxToken.transfer(platformFeeReceiver, platformFee), "Platform fee transfer failed");
+        if(!idrxToken.transfer(platformFeeReceiver, platformFee)) revert PlatformFeeTransferFailed();
         
         // Transfer organizer share
         uint256 organizerShare = totalPrice - platformFee;
-        require(idrxToken.transfer(organizer, organizerShare), "Organizer payment failed");
+        if(!idrxToken.transfer(organizer, organizerShare)) revert OrganizerPaymentFailed();
         
         // Mint NFT tickets
         for (uint256 i = 0; i < _quantity; i++) {
@@ -183,8 +214,8 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         bool _restrictResellTiming,
         uint256 _minDaysBeforeEvent
     ) external override onlyOrganizer {
-        require(_maxMarkupPercentage <= 5000, "Max markup cannot exceed 50%"); // 50% = 5000 basis points
-        require(_organizerFeePercentage <= 1000, "Organizer fee cannot exceed 10%"); // 10% = 1000 basis points
+        if(_maxMarkupPercentage > 5000) revert MaxMarkupExceeded(); // 50% = 5000 basis points
+        if(_organizerFeePercentage > 1000) revert OrganizerFeeExceeded(); // 10% = 1000 basis points
         
         resaleRules.maxMarkupPercentage = _maxMarkupPercentage;
         resaleRules.organizerFeePercentage = _organizerFeePercentage;
@@ -196,25 +227,21 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     
     // List ticket for resale
     function listTicketForResale(uint256 _tokenId, uint256 _price) external override nonReentrant eventActive {
-        require(resaleRules.allowResell, "Resale not allowed for this event");
-        require(ticketNFT.ownerOf(_tokenId) == msg.sender, "You don't own this ticket");
+        if(!resaleRules.allowResell) revert ResaleNotAllowed();
+        if(ticketNFT.ownerOf(_tokenId) != msg.sender) revert NotTicketOwner();
         
         // Get original price from metadata
         Structs.TicketMetadata memory metadata = ticketNFT.getTicketMetadata(_tokenId);
-        require(!metadata.used, "Ticket has been used");
+        if(metadata.used) revert TicketUsed();
         
         // Validate resale price
-        require(
-            TicketLib.validateResalePrice(metadata.originalPrice, _price, resaleRules.maxMarkupPercentage),
-            "Price exceeds maximum allowed"
-        );
+        if(!TicketLib.validateResalePrice(metadata.originalPrice, _price, resaleRules.maxMarkupPercentage))
+            revert PriceExceedsMaxAllowed();
         
         // Check timing restrictions if enabled
         if (resaleRules.restrictResellTiming) {
-            require(
-                block.timestamp <= date - (resaleRules.minDaysBeforeEvent * 1 days),
-                "Too close to event date"
-            );
+            if(block.timestamp > date - (resaleRules.minDaysBeforeEvent * 1 days))
+                revert TooCloseToEventDate();
         }
         
         // Transfer ticket to contract
@@ -234,7 +261,7 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     // Buy resale ticket
     function purchaseResaleTicket(uint256 _tokenId) external override nonReentrant eventActive {
         Structs.ListingInfo storage listing = listings[_tokenId];
-        require(listing.active, "Ticket not listed for resale");
+        if(!listing.active) revert TicketNotListedForResale();
         
         // Calculate fees
         (uint256 organizerFee, uint256 platformFee) = TicketLib.calculateFees(
@@ -247,14 +274,14 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
         uint256 sellerAmount = listing.price - organizerFee - platformFee;
         
         // Transfer tokens from buyer
-        require(idrxToken.transferFrom(msg.sender, address(this), listing.price), "Payment failed");
+        if(!idrxToken.transferFrom(msg.sender, address(this), listing.price)) revert PaymentFailed();
         
         // Transfer fees
-        require(idrxToken.transfer(organizer, organizerFee), "Organizer fee transfer failed");
-        require(idrxToken.transfer(platformFeeReceiver, platformFee), "Platform fee transfer failed");
+        if(!idrxToken.transfer(organizer, organizerFee)) revert OrganizerFeeTransferFailed();
+        if(!idrxToken.transfer(platformFeeReceiver, platformFee)) revert PlatformFeeTransferFailed();
         
         // Transfer seller amount
-        require(idrxToken.transfer(listing.seller, sellerAmount), "Seller payment failed");
+        if(!idrxToken.transfer(listing.seller, sellerAmount)) revert SellerPaymentFailed();
         
         // Transfer ticket to buyer
         ticketNFT.safeTransferFrom(address(this), msg.sender, _tokenId);
@@ -271,8 +298,8 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     // Cancel a resale listing
     function cancelResaleListing(uint256 _tokenId) external nonReentrant {
         Structs.ListingInfo storage listing = listings[_tokenId];
-        require(listing.active, "Ticket not listed for resale");
-        require(listing.seller == msg.sender, "Not the seller");
+        if(!listing.active) revert TicketNotListedForResale();
+        if(listing.seller != msg.sender) revert NotSeller();
         
         // Transfer ticket back to seller
         ticketNFT.safeTransferFrom(address(this), msg.sender, _tokenId);
@@ -285,7 +312,7 @@ contract Event is IEvent, ReentrancyGuard, Ownable {
     
     // Cancel event - refunds would be handled by organizer
     function cancelEvent() external override onlyOrganizer {
-        require(!cancelled, "Event already cancelled");
+        if(cancelled) revert EventAlreadyCancelled();
         cancelled = true;
         
         emit EventCancelled();

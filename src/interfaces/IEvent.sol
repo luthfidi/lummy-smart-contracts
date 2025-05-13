@@ -44,4 +44,12 @@ interface IEvent {
     function getTicketNFT() external view returns (address);
     
     function cancelEvent() external;
+    
+    // Added getter functions
+    function name() external view returns (string memory);
+    function description() external view returns (string memory);
+    function date() external view returns (uint256);
+    function venue() external view returns (string memory);
+    function ipfsMetadata() external view returns (string memory);
+    function organizer() external view returns (address);
 }
